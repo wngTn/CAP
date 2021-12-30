@@ -1,7 +1,87 @@
 import cv2
 import numpy as np
 import random
+import albumentations as A
 from utils.box_utils import matrix_iof
+
+
+def _rotate(image, boxes, landm, labels):
+    for row in boxes:
+        row[2] -= row[0]
+        row[3] -= row[1]
+
+    boxes = np.insert(boxes, 4, -1, axis=1)
+
+    landm_temp = []
+    i = 0
+    for row in landm:
+        for j in range(0, len(row), 2):
+            if row[j] > 0 and row[j + 1] > 0:
+                if abs(row[j]-image.shape[1]) < 0.0000001:
+                    row[j] -= 0.0000001
+                if abs(row[j+1]-image.shape[0]) < 0.0000001:
+                    row[j+1] -= 0.0000001
+                landm_temp += [(row[j], row[j + 1], i)]
+                i += 1
+
+    transform = A.Compose(
+        [
+            A.Rotate(border_mode=cv2.BORDER_CONSTANT, p=1)
+        ], bbox_params=A.BboxParams(format='coco', min_area=512, min_visibility=0.5)
+        , keypoint_params=A.KeypointParams(format='xy')
+    )
+
+    augmentations = transform(image=image, bboxes=boxes, keypoints=landm_temp)
+    augmented_img = augmentations["image"]
+    augmented_bbox = augmentations["bboxes"]
+    augmented_landm = augmentations["keypoints"]
+
+    bbox = np.zeros((0, 4))
+    for b in augmented_bbox:
+        bnp = np.zeros((1, 4))
+        bnp[0, 0] = b[0]
+        bnp[0, 1] = b[1]
+        bnp[0, 2] = b[2] + b[0]
+        bnp[0, 3] = b[3] + b[1]
+        bbox = np.append(bbox, bnp, axis=0)
+
+    landm = np.zeros((0, 10))
+    n = bbox.shape[0]
+    for i in range(n):
+        temp = np.zeros((1, 10))
+        temp.fill(-1)
+        landm = np.append(landm, temp, axis=0)
+
+    for (x, y, z) in augmented_landm:
+        person = z // 2
+        if person >= n:
+            continue
+        # 1 left, 0 right
+        eye = z % 2
+        if eye == 1:
+            landm[person][2] = x
+            landm[person][3] = y
+        else:
+            landm[person][0] = x
+            landm[person][1] = y
+
+    # TODO wouldn't work if anything other than 1 as label
+    if n - len(labels) < 0:
+        labels = labels[:n-len(labels)]
+
+    return augmented_img, bbox, landm, labels
+
+
+def _albumentation(image):
+    transform = A.Compose(
+        [
+            A.MotionBlur(blur_limit=(3, 10), p=0.3),
+            # A.CoarseDropout(max_holes=10, max_height=10, max_width=10, fill_value=0, p=0.2),
+            # A.Blur(blur_limit=(3, 10), p=0.3),
+        ]
+    )
+    augmentations = transform(image=image)
+    return augmentations["image"]
 
 
 def _crop(image, boxes, labels, landm, img_dim):
@@ -219,8 +299,10 @@ class preproc(object):
 
         image_t, boxes_t, labels_t, landm_t, pad_image_flag = _crop(image, boxes, labels, landm, self.img_dim)
         image_t = _distort(image_t)
+        image_t = _albumentation(image_t)
         image_t = _pad_to_square(image_t, self.rgb_means, pad_image_flag)
         image_t, boxes_t, landm_t = _mirror(image_t, boxes_t, landm_t)
+        # image_t, boxes_t, landm_t, labels_t = _rotate(image_t, boxes_t, landm_t, labels_t)
         height, width, _ = image_t.shape
         image_t = _resize_subtract_mean(image_t, self.img_dim, self.rgb_means)
 

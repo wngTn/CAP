@@ -28,7 +28,7 @@ cfg_re50 = {
     'clip': False,
     'loc_weight': 2.0,
     'gpu_train': True,
-    'batch_size': 1,  # batch_size = examples / iterations
+    'batch_size': 2,  # batch_size = examples / iterations
     'ngpu': 4,
     'epoch': 2,  # one epoch is one forward and one backward pass of all training examples (default 100)
     'decay1': 70,

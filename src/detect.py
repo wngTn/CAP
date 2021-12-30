@@ -84,7 +84,7 @@ if __name__ == '__main__':
 
     # testing begin
     for i in range(1):
-        image_path = "../media/girl.jpg"
+        image_path = "../media/op.jpg"
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
         img = np.float32(img_raw)
