@@ -30,7 +30,7 @@ cfg_re50 = {
     'gpu_train': True,
     'batch_size': 2,  # batch_size = examples / iterations
     'ngpu': 4,
-    'epoch': 2,  # one epoch is one forward and one backward pass of all training examples (default 100)
+    'epoch': 100,  # one epoch is one forward and one backward pass of all training examples (default 100)
     'decay1': 70,
     'decay2': 90,
     'image_size': 840,
