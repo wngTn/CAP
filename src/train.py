@@ -116,10 +116,12 @@ def train():
             # create batch iterator
             batch_iterator = iter(data.DataLoader(dataset, batch_size, shuffle=True, num_workers=num_workers,
                                                   collate_fn=detection_collate))
-            if (epoch % 10 == 0 and epoch > 0) or (epoch % 5 == 0 and epoch > cfg['decay1']):
-                torch.save(net.state_dict(), save_folder + cfg['name'] + '_epoch_' + str(epoch) + '.pth')
+            # if (epoch % 10 == 0 and epoch > 0) or (epoch % 5 == 0 and epoch > cfg['decay1']):
+            # torch.save(net.state_dict(), save_folder + cfg['name'] + '_epoch_' + str(epoch) + '.pth')
             epoch += 1
 
+        if iteration % 1000 == 0 and iteration > 0:
+            torch.save(net.state_dict(), save_folder + cfg['name'] + '_iteration_' + str(iteration) + '_epoch_' + str(epoch) + '.pth')
         load_t0 = time.time()
         if iteration in stepvalues:
             step_index += 1
@@ -145,9 +147,9 @@ def train():
         print(
             'Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || '
             'Batchtime: {:.4f} s || ETA: {} '
-            .format(epoch, max_epoch, (iteration % epoch_size) + 1,
-                    epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), loss_landm.item(), lr,
-                    batch_time, str(datetime.timedelta(seconds=eta))))
+                .format(epoch, max_epoch, (iteration % epoch_size) + 1,
+                        epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), loss_landm.item(), lr,
+                        batch_time, str(datetime.timedelta(seconds=eta))))
 
     torch.save(net.state_dict(), save_folder + cfg['name'] + '_Tony_Final.pth')
     # torch.save(net.state_dict(), save_folder + 'Final_Retinaface.pth')
