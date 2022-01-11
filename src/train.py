@@ -35,8 +35,7 @@ if args.network == "mobile0.25":
 elif args.network == "resnet50":
     cfg = cfg_re50
 
-# rgb_mean = (104, 117, 123)  # bgr order
-rgb_mean = (79, 92, 98)  # set a bit lower since our pictures are not that dark
+rgb_mean = (104, 117, 123)  # bgr order
 num_classes = 2
 img_dim = cfg['image_size']
 num_gpu = cfg['ngpu']

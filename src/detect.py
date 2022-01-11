@@ -52,9 +52,12 @@ parser.add_argument('--top_k', default=5000, type=int, help='top_k')
 parser.add_argument('--nms_threshold', default=0.4, type=float, help='nms_threshold')
 parser.add_argument('--keep_top_k', default=750, type=int, help='keep_top_k')
 parser.add_argument('--vis_thres', default=0.42, type=float, help='visualization_threshold')
+parser.add_argument('--vis_thres_pose', default=0.3, type=float, help='visualization_threshold for key pose estimation')
 parser.add_argument('--cfg', default='../experiments/coco/w48/w48_4x_reg03_bs5_640_adam_lr1e-3_coco_x140.yaml',
                     type=str)
-parser.add_argument('--outputDir', type=str, default='/output/')
+parser.add_argument('--outputDir', type=str, default='output/')
+parser.add_argument('--write_scores', type=bool, default=False, help='whether the scores should be written')
+parser.add_argument('-d', '--detect', type=str, default='combined', help='What should be detected')
 parser.add_argument('opts',
                     help='Modify config options using the command-line',
                     default=None,
@@ -138,8 +141,7 @@ def pose(img_raw):
     # if cfg.TEST.MODEL_FILE:
     # cfg.TEST.MODEL_FILE = '../model/pose_coco/pose_dekr_hrnetw48_coco.pth'
     print('=> loading model from {}'.format('../model/pose_coco/pose_dekr_hrnetw48_coco.pth'))
-    pose_model.load_state_dict(torch.load(
-        '../model/pose_coco/pose_dekr_hrnetw48_coco.pth'), strict=False)
+    pose_model.load_state_dict(torch.load('../model/pose_coco/pose_dekr_hrnetw48_coco.pth'), strict=False)
     # else:
     # raise ValueError('expected model defined in config at TEST.MODEL_FILE')
 
@@ -148,9 +150,10 @@ def pose(img_raw):
 
     image_rgb = cv2.cvtColor(img_raw, cv2.COLOR_BGR2RGB)
     image_pose = image_rgb.copy()
-    pose_preds = get_pose_estimation_prediction(cfg, pose_model, image_pose, 0.3, transforms=pose_transform)
+    pose_preds, pose_scores = get_pose_estimation_prediction(cfg, pose_model, image_pose, args.vis_thres_pose,
+                                                             transforms=pose_transform)
 
-    return pose_preds
+    return pose_preds, pose_scores
 
 
 # RETINAFACE #
@@ -191,7 +194,7 @@ def load_model(model, pretrained_path, load_to_cpu):
     return model
 
 
-def boundingbox(img_raw):
+def bounding_box(img_raw):
     torch.set_grad_enabled(False)
     cfg = cfg_re50
     # net and model
@@ -243,11 +246,22 @@ def boundingbox(img_raw):
     return dets
 
 
-def isinboxes(boxes, x_avg, y_avg, score):
+def is_in_boxes(boxes, x_avg, y_avg, score):
+    """
+    Args:
+        boxes: the detected boxes
+        x_avg: average of the x values of the key poses
+        y_avg: average of the y values of the key poses
+        score: the score of the key pose detection
+
+    Returns: the boxes with the adapted score. The score will be added with 1.5 times of the score of the
+    key points if their average is in a box
+
+    """
     buffer = 5
     for j in range(len(boxes)):
-        b = boxes[j]
-        [x_least, y_least, x_max, y_max, _] = b
+        box = boxes[j]
+        [x_least, y_least, x_max, y_max, _] = box
         if ((x_least - buffer) <= x_avg <= (x_max + buffer)) and ((y_least - buffer) <= y_avg <= (y_max + buffer)):
             boxes[j][4] += (score * 1.5)
             return boxes, True
@@ -255,86 +269,139 @@ def isinboxes(boxes, x_avg, y_avg, score):
     return boxes, False
 
 
-def getbbox(poses, pose_score):
+def get_bounding_boxes(poses, pose_score):
+    """
+
+    Args:
+        poses: the key poses that have been detected
+        pose_score: the score of the pose
+
+    Returns: a list of the bounding boxes created from the key poses
+
+    """
     result = []
     for j in range(len(poses)):
         coords = poses[j]
         x_values = [tup[0] for tup in coords]
         y_values = [tup[1] for tup in coords]
-        x_least = min(x_values) - 5
-        x_max = max(x_values) + 5
-        y_least = min(y_values) - 10
-        y_max = max(y_values) + 5
+        x_least = min(x_values) - 7
+        x_max = max(x_values) + 7
+        y_least = min(y_values) - 15
+        y_max = max(y_values) + 10
         result.append([x_least, y_least, x_max, y_max, pose_score[j]])
     return result
 
 
-def finalboundbox(boxes, poses, pose_score):
+def final_bounding_boxes(boxes, poses, pose_score):
+    """
+
+    Args:
+        boxes: the detected bounding boxes
+        poses: the detected key poses
+        pose_score: the sores of the detected key poses
+
+    Returns: the final bounding boxes with the scores
+
+    """
     new_poses = []
     new_scores = []
     for j in range(len(poses)):
         coords = poses[j]
         x_avg = mean([tup[0] for tup in coords])
         y_avg = mean([tup[1] for tup in coords])
-        newBoxes, bool = isinboxes(boxes, x_avg, y_avg, pose_score[j])
-        if not bool:
+        boxes_new_scores, in_boxes = is_in_boxes(boxes, x_avg, y_avg, pose_score[j])
+        if not in_boxes:
             new_poses.append(coords)
             new_scores.append(pose_score[j])
         else:
-            boxes = newBoxes
+            boxes = boxes_new_scores
 
-    poseboxes = getbbox(new_poses, pose_score)
-    if len(poseboxes) != 0:
-        boxes = np.append(boxes, poseboxes, axis=0)
+    bounding_boxes_from_key_poses = get_bounding_boxes(new_poses, pose_score)
+    if len(bounding_boxes_from_key_poses) != 0:
+        boxes = np.append(boxes, bounding_boxes_from_key_poses, axis=0)
 
     return boxes
 
 
-if __name__ == '__main__':
-    # image_path = "/home/tony/Documents/CAP/media/not_annotated/cn03/0000008190_color_annotated.jpg"
-    pose_preds = []
-    scores = []
-
-    imgdir = '/home/tony/Documents/CAP/media/data_op/cn04/'
-
-    files = os.listdir(imgdir)
-
-    files = files[10:]
-
-    for image in files:
-        image_path = imgdir + image
+def draw_combined(file_names, path_to_filenames, output_dir, write_score):
+    for image in file_names:
+        image_path = path_to_filenames + image
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
-        dets = boundingbox(img_raw)
+        dets = bounding_box(img_raw)
         pose_preds, scores = pose(img_raw)
 
-        finalbboxes = finalboundbox(dets, [li[:3] for li in pose_preds], scores)
-
-        # i = 0
-        # for coords in pose_preds:
-        #     # Draw each point on image
-        #     for coord in coords[:3]:
-        #         x_coord, y_coord = int(coord[0]), int(coord[1])
-        #         cv2.circle(img_raw, (x_coord, y_coord), 4, (0, 0, 255), 2)
-        #
-        #     cx = int(coords[0][0])
-        #     cy = int(coords[0][1]) + 12
-        #     text = "{:.4f}".format(scores[i])
-        #     cv2.putText(img_raw, text, (cx, cy),
-        #                 cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
-        #     i += 1
-
-        # show image
-        for b in finalbboxes:
-            if b[4] < args.vis_thres:
+        # we only want the three key poses: left eye, right eye and nose
+        final_boxes = final_bounding_boxes(dets, [li[:3] for li in pose_preds], scores)
+        for boxes in final_boxes:
+            if boxes[4] < args.vis_thres:
                 continue
-            # text = "{:.4f}".format(b[4])
-            b = list(map(int, b))
-            cv2.rectangle(img_raw, (b[0], b[1]), (b[2], b[3]), (0, 0, 255), 2)
-            cx = b[0]
-            cy = b[1] + 12
-            # cv2.putText(img_raw, text, (cx, cy),
-            #             cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+            text = "{:.4f}".format(boxes[4])
+            boxes = list(map(int, boxes))
+            cv2.rectangle(img_raw, (boxes[0], boxes[1]), (boxes[2], boxes[3]), (0, 0, 255), 2)
+            if write_score:
+                cx = boxes[0]
+                cy = boxes[1] + 12
+                cv2.putText(img_raw, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
-        name = "./output/cn04/"
-        cv2.imwrite(name + image, img_raw)
+        cv2.imwrite(output_dir + image, img_raw)
+
+
+def draw_key_poses(file_names, path_to_filenames, output_dir, write_score):
+    for image in file_names:
+        image_path = path_to_filenames + image
+        img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
+
+        pose_preds, scores = pose(img_raw)
+
+        i = 0
+        for coords in pose_preds:
+            # Draw each point on image (we only want left eye, right eye and nose)
+            for coord in coords[:3]:
+                x_coord, y_coord = int(coord[0]), int(coord[1])
+                cv2.circle(img_raw, (x_coord, y_coord), 4, (0, 0, 255), 4)
+
+            if write_score:
+                cx = int(coords[0][0])
+                cy = int(coords[0][1]) + 12
+                text = "{:.4f}".format(scores[i])
+                cv2.putText(img_raw, text, (cx, cy),
+                            cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+            i += 1
+
+        cv2.imwrite(output_dir + image, img_raw)
+
+
+def draw_retinaface(file_names, path_to_filenames, output_dir, write_score):
+    for image in file_names:
+        image_path = path_to_filenames + image
+        img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
+
+        final_boxes = bounding_box(img_raw)
+        for boxes in final_boxes:
+            if boxes[4] < args.vis_thres:
+                continue
+            text = "{:.4f}".format(boxes[4])
+            boxes = list(map(int, boxes))
+            cv2.rectangle(img_raw, (boxes[0], boxes[1]), (boxes[2], boxes[3]), (0, 0, 255), 2)
+            if write_score:
+                cx = boxes[0]
+                cy = boxes[1] + 12
+                cv2.putText(img_raw, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+
+
+        cv2.imwrite(output_dir + image, img_raw)
+
+
+if __name__ == '__main__':
+    imgdir = '/home/tony/Documents/CAP/media/data_op/cn02/'
+    files = os.listdir(imgdir)
+    files = files[:10]
+    if args.detect == "combined":
+        draw_combined(files, imgdir, args.outputDir, args.write_scores)
+    elif args.detect == "key_poses":
+        draw_key_poses(files, imgdir, args.outputDir, args.write_scores)
+    else:
+        draw_retinaface(files, imgdir, args.outputDir, args.write_scores)
+
+
