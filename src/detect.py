@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import print_function
 
+import glob
 import shutil
 from models.retinaface import RetinaFace
 import torch.nn.parallel
@@ -58,6 +59,8 @@ parser.add_argument('--cfg', default='../experiments/coco/w48/w48_4x_reg03_bs5_6
 parser.add_argument('--outputDir', type=str, default='output/')
 parser.add_argument('--write_scores', type=bool, default=False, help='whether the scores should be written')
 parser.add_argument('-d', '--detect', type=str, default='combined', help='What should be detected')
+parser.add_argument('--text', type=bool, default=False, help='whether the results should be written on a text file')
+parser.add_argument('--save', type=bool, default=True, help='indicates whether the pictures should be saved')
 parser.add_argument('opts',
                     help='Modify config options using the command-line',
                     default=None,
@@ -286,8 +289,8 @@ def get_bounding_boxes(poses, pose_score):
         y_values = [tup[1] for tup in coords]
         x_least = min(x_values) - 7
         x_max = max(x_values) + 7
-        y_least = min(y_values) - 15
-        y_max = max(y_values) + 10
+        y_least = min(y_values) - 10
+        y_max = max(y_values) + 15
         result.append([x_least, y_least, x_max, y_max, pose_score[j]])
     return result
 
@@ -323,9 +326,12 @@ def final_bounding_boxes(boxes, poses, pose_score):
     return boxes
 
 
-def draw_combined(file_names, path_to_filenames, output_dir, write_score):
-    for image in file_names:
-        image_path = path_to_filenames + image
+def draw_combined(path_to_filenames, output_dir, write_score, file):
+    for image_path in path_to_filenames:
+
+        image_name = image_path.rsplit('/', 1)[1]
+        computer_node = image_path.rsplit('/', 2)[1]
+
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
         dets = bounding_box(img_raw)
@@ -333,23 +339,40 @@ def draw_combined(file_names, path_to_filenames, output_dir, write_score):
 
         # we only want the three key poses: left eye, right eye and nose
         final_boxes = final_bounding_boxes(dets, [li[:3] for li in pose_preds], scores)
-        for boxes in final_boxes:
-            if boxes[4] < args.vis_thres:
-                continue
-            text = "{:.4f}".format(boxes[4])
-            boxes = list(map(int, boxes))
-            cv2.rectangle(img_raw, (boxes[0], boxes[1]), (boxes[2], boxes[3]), (0, 0, 255), 2)
-            if write_score:
-                cx = boxes[0]
-                cy = boxes[1] + 12
-                cv2.putText(img_raw, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+        if args.save:
+            for boxes in final_boxes:
+                if boxes[4] < args.vis_thres:
+                    continue
+                text = "{:.4f}".format(boxes[4])
+                boxes = list(map(int, boxes))
+                cv2.rectangle(img_raw, (boxes[0], boxes[1]), (boxes[2], boxes[3]), (0, 0, 255), 2)
+                if write_score:
+                    cx = boxes[0]
+                    cy = boxes[1] + 12
+                    cv2.putText(img_raw, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
-        cv2.imwrite(output_dir + image, img_raw)
+
+            cv2.imwrite(output_dir + image_name, img_raw)
+
+        if file is not None:
+            file_name = computer_node + "/" + image_name + "\n"
+            final_boxes = [box for box in final_boxes if box[4] > args.vis_thres]
+            bounding_box_num = str(len(final_boxes)) + "\n"
+            file.write(file_name)
+            file.write(bounding_box_num)
+            for box in final_boxes:
+                x = int(box[0])
+                y = int(box[1])
+                w = int(box[2]) - int(box[0])
+                h = int(box[3]) - int(box[1])
+                confidence = str(box[4])
+                line = str(x) + " " + str(y) + " " + str(w) + " " + str(h) + " " + confidence + " \n"
+                file.write(line)
 
 
-def draw_key_poses(file_names, path_to_filenames, output_dir, write_score):
-    for image in file_names:
-        image_path = path_to_filenames + image
+def draw_key_poses(path_to_filenames, output_dir, write_score):
+    for image_path in path_to_filenames:
+        image_name = image_path.rsplit('/', 1)[1]
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
         pose_preds, scores = pose(img_raw)
@@ -369,39 +392,59 @@ def draw_key_poses(file_names, path_to_filenames, output_dir, write_score):
                             cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
             i += 1
 
-        cv2.imwrite(output_dir + image, img_raw)
+        cv2.imwrite(output_dir + image_name, img_raw)
 
 
-def draw_retinaface(file_names, path_to_filenames, output_dir, write_score):
-    for image in file_names:
-        image_path = path_to_filenames + image
+def draw_retinaface(path_to_filenames, output_dir, write_score, file):
+    for image_path in path_to_filenames:
+
+        image_name = image_path.rsplit('/', 1)[1]
+        computer_node = image_path.rsplit('/', 2)[1]
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
         final_boxes = bounding_box(img_raw)
-        for boxes in final_boxes:
-            if boxes[4] < args.vis_thres:
-                continue
-            text = "{:.4f}".format(boxes[4])
-            boxes = list(map(int, boxes))
-            cv2.rectangle(img_raw, (boxes[0], boxes[1]), (boxes[2], boxes[3]), (0, 0, 255), 2)
-            if write_score:
-                cx = boxes[0]
-                cy = boxes[1] + 12
-                cv2.putText(img_raw, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+        if args.save:
+            for boxes in final_boxes:
+                if boxes[4] < args.vis_thres:
+                    continue
+                text = "{:.4f}".format(boxes[4])
+                boxes = list(map(int, boxes))
+                cv2.rectangle(img_raw, (boxes[0], boxes[1]), (boxes[2], boxes[3]), (0, 0, 255), 2)
+                if write_score:
+                    cx = boxes[0]
+                    cy = boxes[1] + 12
+                    cv2.putText(img_raw, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
+            cv2.imwrite(output_dir + image_name, img_raw)
 
-        cv2.imwrite(output_dir + image, img_raw)
+        if file is not None:
+            file_name = computer_node + "/" + image_name + "\n"
+            final_boxes = [box for box in final_boxes if box[4] > args.vis_thres]
+            bounding_box_num = str(len(final_boxes)) + "\n"
+            file.write(file_name)
+            file.write(bounding_box_num)
+            for box in final_boxes:
+                x = int(box[0])
+                y = int(box[1])
+                w = int(box[2]) - int(box[0])
+                h = int(box[3]) - int(box[1])
+                confidence = str(box[4])
+                line = str(x) + " " + str(y) + " " + str(w) + " " + str(h) + " " + confidence + " \n"
+                file.write(line)
 
 
 if __name__ == '__main__':
     imgdir = '/home/tony/Documents/CAP/media/data_op/cn02/'
-    files = os.listdir(imgdir)
+    files = glob.glob('/home/tony/Documents/CAP/media/data_op/cn01/' + '**/*.jpg', recursive=True)
     files = files[:10]
+
+    txt_file = None
+    if args.text:
+        txt_file = open("results/" + args.detect + ".txt", 'w')
+
     if args.detect == "combined":
-        draw_combined(files, imgdir, args.outputDir, args.write_scores)
+        draw_combined(files, args.outputDir, args.write_scores, txt_file)
     elif args.detect == "key_poses":
-        draw_key_poses(files, imgdir, args.outputDir, args.write_scores)
+        draw_key_poses(files, args.outputDir, args.write_scores)
     else:
-        draw_retinaface(files, imgdir, args.outputDir, args.write_scores)
-
-
+        draw_retinaface(files, args.outputDir, args.write_scores, txt_file)
