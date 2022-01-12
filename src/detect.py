@@ -267,6 +267,8 @@ def is_in_boxes(boxes, x_avg, y_avg, score):
         [x_least, y_least, x_max, y_max, _] = box
         if ((x_least - buffer) <= x_avg <= (x_max + buffer)) and ((y_least - buffer) <= y_avg <= (y_max + buffer)):
             boxes[j][4] += (score * 1.5)
+            if boxes[j][4] > 1:
+                boxes[j][4] = 1
             return boxes, True
 
     return boxes, False
@@ -326,7 +328,12 @@ def final_bounding_boxes(boxes, poses, pose_score):
     return boxes
 
 
-def draw_combined(path_to_filenames, output_dir, write_score, file):
+def draw_combined(path_to_filenames, output_dir, write_score, text):
+    if text:
+        dir = os.path.join('op_room_evaluate', 'combined')
+        if not os.path.isdir(dir):
+            os.makedirs(dir)
+
     for image_path in path_to_filenames:
 
         image_name = image_path.rsplit('/', 1)[1]
@@ -351,23 +358,29 @@ def draw_combined(path_to_filenames, output_dir, write_score, file):
                     cy = boxes[1] + 12
                     cv2.putText(img_raw, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
-
             cv2.imwrite(output_dir + image_name, img_raw)
 
-        if file is not None:
-            file_name = computer_node + "/" + image_name + "\n"
-            final_boxes = [box for box in final_boxes if box[4] > args.vis_thres]
-            bounding_box_num = str(len(final_boxes)) + "\n"
-            file.write(file_name)
-            file.write(bounding_box_num)
-            for box in final_boxes:
-                x = int(box[0])
-                y = int(box[1])
-                w = int(box[2]) - int(box[0])
-                h = int(box[3]) - int(box[1])
-                confidence = str(box[4])
-                line = str(x) + " " + str(y) + " " + str(w) + " " + str(h) + " " + confidence + " \n"
-                file.write(line)
+        if text:
+            dirname = os.path.join('op_room_evaluate/combined', computer_node)
+            if not os.path.isdir(dirname):
+                os.makedirs(dirname)
+
+            save_name = dirname + '/' + image_name[:-4] + ".txt"
+
+            with open(save_name, "w") as fd:
+                file_name = image_name + "\n"
+                final_boxes = [box for box in final_boxes if box[4] > args.vis_thres]
+                bounding_box_num = str(len(final_boxes)) + "\n"
+                fd.write(file_name)
+                fd.write(bounding_box_num)
+                for box in final_boxes:
+                    x = int(box[0])
+                    y = int(box[1])
+                    w = int(box[2]) - int(box[0])
+                    h = int(box[3]) - int(box[1])
+                    confidence = str(box[4])
+                    line = str(x) + " " + str(y) + " " + str(w) + " " + str(h) + " " + confidence + " \n"
+                    fd.write(line)
 
 
 def draw_key_poses(path_to_filenames, output_dir, write_score):
@@ -395,7 +408,12 @@ def draw_key_poses(path_to_filenames, output_dir, write_score):
         cv2.imwrite(output_dir + image_name, img_raw)
 
 
-def draw_retinaface(path_to_filenames, output_dir, write_score, file):
+def draw_retinaface(path_to_filenames, output_dir, write_score, text):
+    if text:
+        dir = os.path.join('op_room_evaluate', 'combined')
+        if not os.path.isdir(dir):
+            os.makedirs(dir)
+
     for image_path in path_to_filenames:
 
         image_name = image_path.rsplit('/', 1)[1]
@@ -417,34 +435,37 @@ def draw_retinaface(path_to_filenames, output_dir, write_score, file):
 
             cv2.imwrite(output_dir + image_name, img_raw)
 
-        if file is not None:
-            file_name = computer_node + "/" + image_name + "\n"
-            final_boxes = [box for box in final_boxes if box[4] > args.vis_thres]
-            bounding_box_num = str(len(final_boxes)) + "\n"
-            file.write(file_name)
-            file.write(bounding_box_num)
-            for box in final_boxes:
-                x = int(box[0])
-                y = int(box[1])
-                w = int(box[2]) - int(box[0])
-                h = int(box[3]) - int(box[1])
-                confidence = str(box[4])
-                line = str(x) + " " + str(y) + " " + str(w) + " " + str(h) + " " + confidence + " \n"
-                file.write(line)
+        if text:
+
+            dirname = os.path.join('op_room_evaluate/retinaface', computer_node)
+            if not os.path.isdir(dirname):
+                os.makedirs(dirname)
+
+            save_name = dirname + '/' + image_name[:-4] + ".txt"
+
+            with open(save_name, "w") as fd:
+                file_name = image_name + "\n"
+                final_boxes = [box for box in final_boxes if box[4] > args.vis_thres]
+                bounding_box_num = str(len(final_boxes)) + "\n"
+                fd.write(file_name)
+                fd.write(bounding_box_num)
+                for box in final_boxes:
+                    x = int(box[0])
+                    y = int(box[1])
+                    w = int(box[2]) - int(box[0])
+                    h = int(box[3]) - int(box[1])
+                    confidence = str(box[4])
+                    line = str(x) + " " + str(y) + " " + str(w) + " " + str(h) + " " + confidence + " \n"
+                    fd.write(line)
 
 
 if __name__ == '__main__':
-    imgdir = '/home/tony/Documents/CAP/media/data_op/cn02/'
-    files = glob.glob('/home/tony/Documents/CAP/media/data_op/cn01/' + '**/*.jpg', recursive=True)
-    files = files[:10]
-
-    txt_file = None
-    if args.text:
-        txt_file = open("results/" + args.detect + ".txt", 'w')
+    files = glob.glob('/home/tony/Documents/CAP/media/data_op/cn03/' + '**/*.jpg', recursive=True)
+    # files = files[:10]
 
     if args.detect == "combined":
-        draw_combined(files, args.outputDir, args.write_scores, txt_file)
+        draw_combined(files, args.outputDir, args.write_scores, args.text)
     elif args.detect == "key_poses":
         draw_key_poses(files, args.outputDir, args.write_scores)
     else:
-        draw_retinaface(files, args.outputDir, args.write_scores, txt_file)
+        draw_retinaface(files, args.outputDir, args.write_scores, args.text)
