@@ -23,6 +23,7 @@ from core.inference import get_multi_stage_outputs
 from core.inference import aggregate_results
 from core.nms import pose_nms
 from core.match import match_pose_to_heatmap
+from utils.timer import Timer
 from utils.transforms import resize_align_multi_scale
 from utils.transforms import get_final_preds
 from utils.transforms import get_multi_scale_size
@@ -60,7 +61,8 @@ parser.add_argument('--outputDir', type=str, default='output/')
 parser.add_argument('--write_scores', type=bool, default=False, help='whether the scores should be written')
 parser.add_argument('-d', '--detect', type=str, default='combined', help='What should be detected')
 parser.add_argument('--text', type=bool, default=False, help='whether the results should be written on a text file')
-parser.add_argument('--save', type=bool, default=True, help='indicates whether the pictures should be saved')
+parser.add_argument('-s', '--save_image', action="store_true", default=False, help='indicates whether the pictures '
+                                                                                   'should be saved')
 parser.add_argument('opts',
                     help='Modify config options using the command-line',
                     default=None,
@@ -143,7 +145,7 @@ def pose(img_raw):
 
     # if cfg.TEST.MODEL_FILE:
     # cfg.TEST.MODEL_FILE = '../model/pose_coco/pose_dekr_hrnetw48_coco.pth'
-    print('=> loading model from {}'.format('../model/pose_coco/pose_dekr_hrnetw48_coco.pth'))
+    # print('=> loading model from {}'.format('../model/pose_coco/pose_dekr_hrnetw48_coco.pth'))
     pose_model.load_state_dict(torch.load('../model/pose_coco/pose_dekr_hrnetw48_coco.pth'), strict=False)
     # else:
     # raise ValueError('expected model defined in config at TEST.MODEL_FILE')
@@ -167,22 +169,22 @@ def check_keys(model, pretrained_state_dict):
     used_pretrained_keys = model_keys & ckpt_keys
     unused_pretrained_keys = ckpt_keys - model_keys
     missing_keys = model_keys - ckpt_keys
-    print('Missing keys:{}'.format(len(missing_keys)))
-    print('Unused checkpoint keys:{}'.format(len(unused_pretrained_keys)))
-    print('Used keys:{}'.format(len(used_pretrained_keys)))
+    # print('Missing keys:{}'.format(len(missing_keys)))
+    # print('Unused checkpoint keys:{}'.format(len(unused_pretrained_keys)))
+    # print('Used keys:{}'.format(len(used_pretrained_keys)))
     assert len(used_pretrained_keys) > 0, 'load NONE from pretrained checkpoint'
     return True
 
 
 def remove_prefix(state_dict, prefix):
     ''' Old style model is stored with all names of parameters sharing common prefix 'module.' '''
-    print('remove prefix \'{}\''.format(prefix))
+    # print('remove prefix \'{}\''.format(prefix))
     f = lambda x: x.split(prefix, 1)[-1] if x.startswith(prefix) else x
     return {f(key): value for key, value in state_dict.items()}
 
 
 def load_model(model, pretrained_path, load_to_cpu):
-    print('Loading pretrained model from {}'.format(pretrained_path))
+    # print('Loading pretrained model from {}'.format(pretrained_path))
     if load_to_cpu:
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
     else:
@@ -329,6 +331,8 @@ def final_bounding_boxes(boxes, poses, pose_score):
 
 
 def draw_combined(path_to_filenames, output_dir, write_score, text):
+    _t = {'detecting': Timer()}
+    i = 0
     if text:
         dir = os.path.join('op_room_evaluate', 'combined')
         if not os.path.isdir(dir):
@@ -341,12 +345,14 @@ def draw_combined(path_to_filenames, output_dir, write_score, text):
 
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
+        _t['detecting'].tic()
         dets = bounding_box(img_raw)
         pose_preds, scores = pose(img_raw)
 
         # we only want the three key poses: left eye, right eye and nose
         final_boxes = final_bounding_boxes(dets, [li[:3] for li in pose_preds], scores)
-        if args.save:
+        _t['detecting'].toc()
+        if args.save_image:
             for boxes in final_boxes:
                 if boxes[4] < args.vis_thres:
                     continue
@@ -381,14 +387,22 @@ def draw_combined(path_to_filenames, output_dir, write_score, text):
                     confidence = str(box[4])
                     line = str(x) + " " + str(y) + " " + str(w) + " " + str(h) + " " + confidence + " \n"
                     fd.write(line)
+        print('im_detect: {:d}/{:d} time for one picture: {:.4f}s'.format(i + 1, len(path_to_filenames),
+                                                                          _t['detecting'].average_time))
+        i += 1
 
 
 def draw_key_poses(path_to_filenames, output_dir, write_score):
+    _t = {'detecting': Timer()}
+    j = 0
+
     for image_path in path_to_filenames:
         image_name = image_path.rsplit('/', 1)[1]
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
+        _t['detecting'].tic()
         pose_preds, scores = pose(img_raw)
+        _t['detecting'].toc()
 
         i = 0
         for coords in pose_preds:
@@ -406,11 +420,17 @@ def draw_key_poses(path_to_filenames, output_dir, write_score):
             i += 1
 
         cv2.imwrite(output_dir + image_name, img_raw)
+        print('im_detect: {:d}/{:d} time for one picture: {:.4f}s'.format(j + 1, len(path_to_filenames),
+                                                                          _t['detecting'].average_time))
+        j += 1
 
 
 def draw_retinaface(path_to_filenames, output_dir, write_score, text):
+    _t = {'detecting': Timer()}
+    i = 0
+
     if text:
-        dir = os.path.join('op_room_evaluate', 'combined')
+        dir = os.path.join('op_room_evaluate', 'retinaface')
         if not os.path.isdir(dir):
             os.makedirs(dir)
 
@@ -420,8 +440,11 @@ def draw_retinaface(path_to_filenames, output_dir, write_score, text):
         computer_node = image_path.rsplit('/', 2)[1]
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
+        _t['detecting'].tic()
         final_boxes = bounding_box(img_raw)
-        if args.save:
+        _t['detecting'].toc()
+
+        if args.save_image:
             for boxes in final_boxes:
                 if boxes[4] < args.vis_thres:
                     continue
@@ -458,10 +481,34 @@ def draw_retinaface(path_to_filenames, output_dir, write_score, text):
                     line = str(x) + " " + str(y) + " " + str(w) + " " + str(h) + " " + confidence + " \n"
                     fd.write(line)
 
+        print('im_detect: {:d}/{:d} time for one picture: {:.4f}s'.format(i + 1, len(path_to_filenames),
+                                                                          _t['detecting'].average_time))
+        i += 1
+
+
+def print_args():
+    print("Your Configurations are:")
+    print("\tModel for Face Detection:", args.trained_model)
+    print("\tConfidence Threshold:", args.confidence_threshold)
+    print("\tTop K:", args.top_k)
+    print("\tKeep Top K:", args.keep_top_k)
+    print("\tNMS Threshold:", args.nms_threshold)
+    print("\tThreshold for Retinaface:", args.vis_thres)
+    print("\tThreshold for Key Poses:", args.vis_thres_pose)
+    print("\tConfiguration File for Key Poses:", args.cfg)
+    print("\tSaving Image:", args.save_image)
+    print("\tOutput Directory:", args.outputDir)
+    print("\tDetector:", args.detect)
+    print("\tWriting the Score:", args.write_scores)
+    print("\tWriting Results as Text:", args.text)
+
+
 
 if __name__ == '__main__':
-    files = glob.glob('/home/tony/Documents/CAP/media/data_op/cn03/' + '**/*.jpg', recursive=True)
+    files = glob.glob('/home/tony/Documents/CAP/media/data_op/' + '**/*.jpg', recursive=True)
     # files = files[:10]
+
+    print_args()
 
     if args.detect == "combined":
         draw_combined(files, args.outputDir, args.write_scores, args.text)

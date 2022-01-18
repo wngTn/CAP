@@ -116,7 +116,7 @@ def read_pred_file(filepath):
     boxes = []
     for line in lines:
         line = line.rstrip('\r\n').split(' ')
-        if line[0] is '':
+        if line[0] == '':
             continue
         # a = float(line[4])
         boxes.append([float(line[0]), float(line[1]), float(line[2]), float(line[3]), float(line[4])])
@@ -167,7 +167,7 @@ def norm_score(pred):
             v[:, -1] = (v[:, -1] - min_score) / diff
 
 
-def image_eval(pred, gt, ignore, iou_thresh):
+def image_eval(pred, gt, ignore, iou_thresh, del_res):
     """ single image evaluation
     pred: Nx5
     gt: Nx4
@@ -187,8 +187,17 @@ def image_eval(pred, gt, ignore, iou_thresh):
 
     overlaps = bbox_overlaps(_pred[:, :4], _gt)
 
-    for h in range(_pred.shape[0]):
+    # Deletes the least overlapping boxes if there is more predicted than in the ground truth
+    if del_res:
+        if len(_pred) > len(_gt):
+            for i in range(len(_pred) - len(_gt)):
+                smallest_row_index = overlaps.sum(axis=1).argmin()
+                overlaps = np.delete(overlaps, smallest_row_index, axis=0)
+                pred_recall = pred_recall[:-1]
+                proposal_list = proposal_list[:-1]
 
+    #for h in range(_pred.shape[0]):
+    for h in range(overlaps.shape[0]):
         gt_overlap = overlaps[h]
         max_overlap, max_idx = gt_overlap.max(), gt_overlap.argmax()
         if max_overlap >= iou_thresh:
@@ -204,9 +213,9 @@ def image_eval(pred, gt, ignore, iou_thresh):
 
 
 def img_pr_info(thresh_num, pred_info, proposal_list, pred_recall):
+    # pred_info has to be sorted by threshold (maybe not)
     pr_info = np.zeros((thresh_num, 2)).astype('float')
     for t in range(thresh_num):
-
         thresh = 1 - (t + 1) / thresh_num
         r_index = np.where(pred_info[:, 4] >= thresh)[0]
         if len(r_index) == 0:
@@ -214,16 +223,20 @@ def img_pr_info(thresh_num, pred_info, proposal_list, pred_recall):
             pr_info[t, 1] = 0
         else:
             r_index = r_index[-1]
+            # what we propose how many faces
             p_index = np.where(proposal_list[:r_index + 1] == 1)[0]
             pr_info[t, 0] = len(p_index)
-            pr_info[t, 1] = pred_recall[r_index]
+            pr_info[t, 1] = pred_recall[r_index] if r_index < len(pred_recall) else pred_recall[-1]
     return pr_info
 
 
 def dataset_pr_info(thresh_num, pr_curve, count_face):
     _pr_curve = np.zeros((thresh_num, 2))
     for i in range(thresh_num):
-        _pr_curve[i, 0] = pr_curve[i, 1] / pr_curve[i, 0]
+        if pr_curve[i, 0] != 0:
+            _pr_curve[i, 0] = pr_curve[i, 1] / pr_curve[i, 0]
+        else:
+            _pr_curve[i, 0] = 0
         _pr_curve[i, 1] = pr_curve[i, 1] / count_face
     return _pr_curve
 
@@ -247,7 +260,7 @@ def voc_ap(rec, prec):
     return ap
 
 
-def evaluation(pred, gt_path, iou_thresh=0.5):
+def evaluation(pred, gt_path, iou_thresh, del_res):
     pred = get_preds(pred)
     norm_score(pred)
     facebox_list, event_list, file_list, cn01_gt_list, cn02_gt_list, cn03_gt_list, cn04_gt_list = get_gt_boxes(gt_path)
@@ -256,12 +269,14 @@ def evaluation(pred, gt_path, iou_thresh=0.5):
     settings = ['cn01', 'cn02', 'cn03', 'cn04']
     aps = []
 
-    count_face = 0
-    pr_curve = np.zeros((thresh_num, 2)).astype('float')
     # [hard, medium, easy]
     pbar = tqdm.tqdm(range(event_num))
 
     for i in pbar:
+
+        count_face = 0
+        pr_curve = np.zeros((thresh_num, 2)).astype('float')
+
         pbar.set_description('Processing {}'.format(settings[i]))
         event_name = str(event_list[i])
         img_list = file_list[i]
@@ -281,11 +296,14 @@ def evaluation(pred, gt_path, iou_thresh=0.5):
             if len(gt_boxes) == 0 or len(pred_info) == 0:
                 continue
 
+            # sort pred_info by threshold, maybe not necessary
+            pred_info = pred_info[np.argsort(pred_info[:, 4])[::-1]]
+
             ignore = np.ones(gt_boxes.shape[0])
             # TODO
             # if len(keep_index) != 0:
             #     ignore[keep_index - 1] = 1
-            pred_recall, proposal_list = image_eval(pred_info, gt_boxes, ignore, iou_thresh)
+            pred_recall, proposal_list = image_eval(pred_info, gt_boxes, ignore, iou_thresh, del_res)
 
             _img_pr_info = img_pr_info(thresh_num, pred_info, proposal_list, pred_recall)
 
@@ -310,6 +328,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--pred', default="./retinaface/")
     parser.add_argument('-g', '--gt', default='./ground_truth/labels.txt')
+    parser.add_argument('-t', '--threshold', type=float, default=0.4)
+    parser.add_argument('-d', '--delete_residual', type=bool, default=True)
 
     args = parser.parse_args()
-    evaluation(args.pred, args.gt)
+    evaluation(args.pred, args.gt, args.threshold, args.delete_residual)
