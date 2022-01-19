@@ -1,6 +1,9 @@
+import _init_paths
+
 import cv2
 import numpy as np
 import albumentations as A
+
 import os
 import torch
 import torch.optim as optim
@@ -13,6 +16,7 @@ from layers.functions.prior_box import PriorBox
 import time
 import datetime
 import math
+
 from models.retinaface import RetinaFace
 
 

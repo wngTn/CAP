@@ -26,7 +26,7 @@ class WiderFaceDetection(data.Dataset):
                     self.words.append(labels_copy)
                     labels.clear()
                 path = line[2:]
-                path = txt_path.replace('label1.txt', 'images/') + path
+                path = txt_path.replace('label.txt', 'images/') + path
                 self.imgs_path.append(path)
             else:
                 line = line.split(' ')
@@ -59,6 +59,10 @@ class WiderFaceDetection(data.Dataset):
             annotation[0, 5] = label[5]  # l0_y
             annotation[0, 6] = label[7]  # l1_x
             annotation[0, 7] = label[8]  # l1_y
+            # annotation[0, 4] = -1  # l0_x
+            # annotation[0, 5] = -1  # l0_y
+            # annotation[0, 6] = -1  # l1_x
+            # annotation[0, 7] = -1  # l1_y
             annotation[0, 8] = label[10]  # l2_x
             annotation[0, 9] = label[11]  # l2_y
             annotation[0, 10] = label[13]  # l3_x

@@ -266,7 +266,6 @@ def evaluation(pred, gt_path, iou_thresh, del_res):
     facebox_list, event_list, file_list, cn01_gt_list, cn02_gt_list, cn03_gt_list, cn04_gt_list = get_gt_boxes(gt_path)
     event_num = len(event_list)
     thresh_num = 1000
-    settings = ['cn01', 'cn02', 'cn03', 'cn04']
     aps = []
 
     # [hard, medium, easy]
@@ -277,7 +276,7 @@ def evaluation(pred, gt_path, iou_thresh, del_res):
         count_face = 0
         pr_curve = np.zeros((thresh_num, 2)).astype('float')
 
-        pbar.set_description('Processing {}'.format(settings[i]))
+        pbar.set_description('Processing {}'.format(event_list[i]))
         event_name = str(event_list[i])
         img_list = file_list[i]
         pred_list = pred[event_name]
@@ -328,7 +327,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--pred', default="./retinaface/")
     parser.add_argument('-g', '--gt', default='./ground_truth/labels.txt')
-    parser.add_argument('-t', '--threshold', type=float, default=0.4)
+    parser.add_argument('-t', '--threshold', type=float, default=0.5)
     parser.add_argument('-d', '--delete_residual', type=bool, default=True)
 
     args = parser.parse_args()

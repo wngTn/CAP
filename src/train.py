@@ -1,4 +1,5 @@
 from __future__ import print_function
+import _init_paths
 import os
 import torch
 import torch.optim as optim
@@ -121,6 +122,7 @@ def train():
 
         if iteration % 1000 == 0 and iteration > 0:
             torch.save(net.state_dict(), save_folder + cfg['name'] + '_iteration_' + str(iteration) + '_epoch_' + str(epoch) + '.pth')
+
         load_t0 = time.time()
         if iteration in stepvalues:
             step_index += 1

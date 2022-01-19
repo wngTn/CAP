@@ -5,7 +5,6 @@ from __future__ import print_function
 
 import glob
 import shutil
-from models.retinaface import RetinaFace
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.optim
@@ -15,7 +14,9 @@ import torchvision.transforms as transforms
 import torchvision
 
 import _init_paths
+
 import models
+from models.retinaface import RetinaFace
 
 from config import cfg
 from config import update_config
@@ -45,7 +46,7 @@ from statistics import mean
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
-parser.add_argument('-m', '--trained_model', default='./weights/fifth_try/Resnet50_iteration_4000.pth',
+parser.add_argument('-m', '--trained_model', default='./weights/Resnet50_Final.pth',
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
@@ -63,10 +64,7 @@ parser.add_argument('-d', '--detect', type=str, default='combined', help='What s
 parser.add_argument('--text', type=bool, default=False, help='whether the results should be written on a text file')
 parser.add_argument('-s', '--save_image', action="store_true", default=False, help='indicates whether the pictures '
                                                                                    'should be saved')
-parser.add_argument('opts',
-                    help='Modify config options using the command-line',
-                    default=None,
-                    nargs=argparse.REMAINDER)
+parser.add_argument('--scaling', default=1, type=float, help='indicates by how much you want to scale the detection boxes')
 
 args = parser.parse_args()
 
@@ -291,8 +289,8 @@ def get_bounding_boxes(poses, pose_score):
         coords = poses[j]
         x_values = [tup[0] for tup in coords]
         y_values = [tup[1] for tup in coords]
-        x_least = min(x_values) - 7
-        x_max = max(x_values) + 7
+        x_least = min(x_values) - 10
+        x_max = max(x_values) + 10
         y_least = min(y_values) - 10
         y_max = max(y_values) + 15
         result.append([x_least, y_least, x_max, y_max, pose_score[j]])
@@ -334,7 +332,7 @@ def draw_combined(path_to_filenames, output_dir, write_score, text):
     _t = {'detecting': Timer()}
     i = 0
     if text:
-        dir = os.path.join('op_room_evaluate', 'combined')
+        dir = args.outputDir
         if not os.path.isdir(dir):
             os.makedirs(dir)
 
@@ -357,6 +355,13 @@ def draw_combined(path_to_filenames, output_dir, write_score, text):
                 if boxes[4] < args.vis_thres:
                     continue
                 text = "{:.4f}".format(boxes[4])
+                if args.scaling != 1:
+                    width_scale = (boxes[2] - boxes[0]) * (args.scaling - 1) / 2
+                    height_scale = (boxes[3] - boxes[1]) * (args.scaling - 1) / 2
+                    boxes[0] -= width_scale
+                    boxes[1] -= height_scale
+                    boxes[2] += width_scale
+                    boxes[3] += height_scale
                 boxes = list(map(int, boxes))
                 cv2.rectangle(img_raw, (boxes[0], boxes[1]), (boxes[2], boxes[3]), (0, 0, 255), 2)
                 if write_score:
@@ -367,7 +372,7 @@ def draw_combined(path_to_filenames, output_dir, write_score, text):
             cv2.imwrite(output_dir + image_name, img_raw)
 
         if text:
-            dirname = os.path.join('op_room_evaluate/combined', computer_node)
+            dirname = os.path.join(args.outputDir, computer_node)
             if not os.path.isdir(dirname):
                 os.makedirs(dirname)
 
@@ -430,7 +435,7 @@ def draw_retinaface(path_to_filenames, output_dir, write_score, text):
     i = 0
 
     if text:
-        dir = os.path.join('op_room_evaluate', 'retinaface')
+        dir = args.outputDir
         if not os.path.isdir(dir):
             os.makedirs(dir)
 
@@ -449,6 +454,13 @@ def draw_retinaface(path_to_filenames, output_dir, write_score, text):
                 if boxes[4] < args.vis_thres:
                     continue
                 text = "{:.4f}".format(boxes[4])
+                if args.scaling != 1:
+                    width_scale = (boxes[2] - boxes[0]) * (args.scaling - 1) / 2
+                    height_scale = (boxes[3] - boxes[1]) * (args.scaling - 1) / 2
+                    boxes[0] -= width_scale
+                    boxes[1] -= height_scale
+                    boxes[2] += width_scale
+                    boxes[3] += height_scale
                 boxes = list(map(int, boxes))
                 cv2.rectangle(img_raw, (boxes[0], boxes[1]), (boxes[2], boxes[3]), (0, 0, 255), 2)
                 if write_score:
@@ -460,7 +472,7 @@ def draw_retinaface(path_to_filenames, output_dir, write_score, text):
 
         if text:
 
-            dirname = os.path.join('op_room_evaluate/retinaface', computer_node)
+            dirname = os.path.join(args.outputDir, computer_node)
             if not os.path.isdir(dirname):
                 os.makedirs(dirname)
 
@@ -505,8 +517,8 @@ def print_args():
 
 
 if __name__ == '__main__':
-    files = glob.glob('/home/tony/Documents/CAP/media/data_op/' + '**/*.jpg', recursive=True)
-    # files = files[:10]
+    files = glob.glob('/home/tony/Documents/CAP/media/data_op/cn04/' + '**/*.jpg', recursive=True)
+    files = files[:1]
 
     print_args()
 
