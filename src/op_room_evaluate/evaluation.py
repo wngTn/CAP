@@ -299,7 +299,6 @@ def evaluation(pred, gt_path, iou_thresh, del_res):
             pred_info = pred_info[np.argsort(pred_info[:, 4])[::-1]]
 
             ignore = np.ones(gt_boxes.shape[0])
-            # TODO
             # if len(keep_index) != 0:
             #     ignore[keep_index - 1] = 1
             pred_recall, proposal_list = image_eval(pred_info, gt_boxes, ignore, iou_thresh, del_res)
@@ -325,9 +324,9 @@ def evaluation(pred, gt_path, iou_thresh, del_res):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-p', '--pred', default="./retinaface/")
+    parser.add_argument('-p', '--pred', default="./lower_lr_8_combined/ground_truth_1/")
     parser.add_argument('-g', '--gt', default='./ground_truth/labels.txt')
-    parser.add_argument('-t', '--threshold', type=float, default=0.5)
+    parser.add_argument('-t', '--threshold', type=float, default=0.4)
     parser.add_argument('-d', '--delete_residual', type=bool, default=True)
 
     args = parser.parse_args()

@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser(description='Retinaface Training')
 parser.add_argument('--training_dataset', default='./data/widerface/train/label.txt', help='Training dataset directory')
 parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
-parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float, help='initial learning rate')
+parser.add_argument('--lr', '--learning-rate', default=1e-9, type=float, help='initial learning rate') # default 1e-3
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--resume_net', default=None, help='resume net for retraining')
 parser.add_argument('--resume_epoch', default=0, type=int, help='resume iter for retraining')
@@ -118,10 +118,11 @@ def train():
                                                   collate_fn=detection_collate))
             # if (epoch % 10 == 0 and epoch > 0) or (epoch % 5 == 0 and epoch > cfg['decay1']):
             # torch.save(net.state_dict(), save_folder + cfg['name'] + '_epoch_' + str(epoch) + '.pth')
+            torch.save(net.state_dict(), save_folder + cfg['name'] + '_epoch_' + str(epoch) + '.pth')
             epoch += 1
 
-        if iteration % 1000 == 0 and iteration > 0:
-            torch.save(net.state_dict(), save_folder + cfg['name'] + '_iteration_' + str(iteration) + '_epoch_' + str(epoch) + '.pth')
+        # if iteration % 1000 == 0 and iteration > 0:
+          #  torch.save(net.state_dict(), save_folder + cfg['name'] + '_iteration_' + str(iteration) + '_epoch_' + str(epoch) + '.pth')
 
         load_t0 = time.time()
         if iteration in stepvalues:

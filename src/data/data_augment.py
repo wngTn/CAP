@@ -75,7 +75,7 @@ def _rotate(image, boxes, landm, labels):
 def _albumentation(image):
     transform = A.Compose(
         [
-            A.MotionBlur(blur_limit=(3, 5), p=0.3),
+            A.MotionBlur(blur_limit=(3, 5), p=0.15),
             # A.CoarseDropout(max_holes=10, max_height=10, max_width=10, fill_value=0, p=0.2),
             # A.Blur(blur_limit=(3, 10), p=0.3),
         ]
@@ -299,7 +299,7 @@ class preproc(object):
 
         image_t, boxes_t, labels_t, landm_t, pad_image_flag = _crop(image, boxes, labels, landm, self.img_dim)
         image_t = _distort(image_t)
-        # image_t = _albumentation(image_t)
+        image_t = _albumentation(image_t)
         image_t = _pad_to_square(image_t, self.rgb_means, pad_image_flag)
         image_t, boxes_t, landm_t = _mirror(image_t, boxes_t, landm_t)
         # image_t, boxes_t, landm_t, labels_t = _rotate(image_t, boxes_t, landm_t, labels_t)
@@ -311,8 +311,8 @@ class preproc(object):
         landm_t[:, 0::2] = landm_t[:, 0::2]/width * self.img_dim
         landm_t[:, 1::2] = landm_t[:, 1::2]/height * self.img_dim
 
-        # boxes_t[:, 0::2] /= width * self.img_dim
-        # boxes_t[:, 1::2] /= height * self.img_dim
+        # boxes_t[:, 0::2] /= width
+        # boxes_t[:, 1::2] /= height
         #
         # landm_t[:, 0::2] /= width
         # landm_t[:, 1::2] /= height
