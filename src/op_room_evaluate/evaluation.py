@@ -14,6 +14,8 @@ from scipy.io import loadmat
 from bbox import bbox_overlaps
 from IPython import embed
 
+import matplotlib.pyplot as plt
+
 
 def get_gt_boxes(gt_dir):
     computer_node_dict = {'cn01': 0, 'cn02': 1, 'cn03': 2, 'cn04': 3}
@@ -196,7 +198,7 @@ def image_eval(pred, gt, ignore, iou_thresh, del_res):
                 pred_recall = pred_recall[:-1]
                 proposal_list = proposal_list[:-1]
 
-    #for h in range(_pred.shape[0]):
+    # for h in range(_pred.shape[0]):
     for h in range(overlaps.shape[0]):
         gt_overlap = overlaps[h]
         max_overlap, max_idx = gt_overlap.max(), gt_overlap.argmax()
@@ -213,7 +215,7 @@ def image_eval(pred, gt, ignore, iou_thresh, del_res):
 
 
 def img_pr_info(thresh_num, pred_info, proposal_list, pred_recall):
-    # pred_info has to be sorted by threshold (maybe not)
+    # pred_info has to be sorted by threshold
     pr_info = np.zeros((thresh_num, 2)).astype('float')
     for t in range(thresh_num):
         thresh = 1 - (t + 1) / thresh_num
@@ -234,9 +236,11 @@ def dataset_pr_info(thresh_num, pr_curve, count_face):
     _pr_curve = np.zeros((thresh_num, 2))
     for i in range(thresh_num):
         if pr_curve[i, 0] != 0:
+            # tp / (tp + fp)
             _pr_curve[i, 0] = pr_curve[i, 1] / pr_curve[i, 0]
         else:
-            _pr_curve[i, 0] = 0
+            _pr_curve[i, 0] = 1
+        # tp / (tp + fn)
         _pr_curve[i, 1] = pr_curve[i, 1] / count_face
     return _pr_curve
 
@@ -267,6 +271,7 @@ def evaluation(pred, gt_path, iou_thresh, del_res):
     event_num = len(event_list)
     thresh_num = 1000
     aps = []
+    prs = []
 
     # [hard, medium, easy]
     pbar = tqdm.tqdm(range(event_num))
@@ -312,7 +317,9 @@ def evaluation(pred, gt_path, iou_thresh, del_res):
         recall = pr_curve[:, 1]
 
         ap = voc_ap(recall, propose)
+
         aps.append(ap)
+        prs.append(pr_curve)
 
     print("==================== Results ====================")
     print("CN01   Val AP: {}".format(aps[0]))
@@ -321,13 +328,64 @@ def evaluation(pred, gt_path, iou_thresh, del_res):
     print("CN04   Val AP: {}".format(aps[3]))
     print("=================================================")
 
+    return prs, aps
+
+
+def evaluate_multiple(preds, ground_truth, threshold, delete_residual):
+    bar_fig, bar_ax = plt.subplots()
+    bar_ax.set_title('Mean Average Precision')
+    X = np.arange(4)
+    width = 0.9 / len(preds)
+
+    pr_curves = []
+    for i, pred in enumerate(preds):
+        prs, aps = evaluation(pred, ground_truth, threshold, delete_residual)
+        pr_curves.append(prs)
+        bar_ax.set_ylim([0.5, 1.0])
+        rect = bar_ax.bar(X + (i * width), aps, width=width, label=preds[i].split('/')[2])
+        bar_ax.bar_label(rect, fmt='%.2f', padding=3)
+
+    bar_ax.set_xticks([r + width + 0.1 for r in range(4)], ['CN01', 'CN02', 'CN03', 'CN04'])
+
+    # Shrink current axis's height by 10% on the bottom
+    box = bar_ax.get_position()
+    bar_ax.set_position([box.x0, box.y0 + box.height * 0.1,
+                         box.width, box.height * 0.9])
+
+    # Put a legend below current axis
+    bar_ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), prop={'size': 8},
+                  fancybox=True, shadow=True, ncol=3)
+
+    plt.show()
+
+    for i in range(4):
+        fig, ax = plt.subplots()
+        ax.set_ylabel('Precision')
+        ax.set_xlabel('Recall')
+        ax.set_title('Precision-Recall Curve Camera Node ' + str(i + 1))
+        for index, pr_curve in enumerate(pr_curves):
+            propose = pr_curve[i][:, 0]
+            recall = pr_curve[i][:, 1]
+            ax.plot(recall, propose, label=preds[index].split('/')[2])
+            ax.legend(loc="best")
+
+        plt.show()
+
+    plt.show()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-p', '--pred', default="./lower_lr_8_combined/ground_truth_1/")
-    parser.add_argument('-g', '--gt', default='./ground_truth/labels.txt')
+    parser.add_argument('-p', '--pred', default="./models/final_model_combined/ground_truth_2_new/")
+    parser.add_argument('-g', '--gt', default='./g_t/ground_truth_2_new/labels.txt')
     parser.add_argument('-t', '--threshold', type=float, default=0.4)
-    parser.add_argument('-d', '--delete_residual', type=bool, default=True)
+    parser.add_argument('-d', '--delete_residual', type=bool, default=False)
 
     args = parser.parse_args()
-    evaluation(args.pred, args.gt, args.threshold, args.delete_residual)
+    # preds = ['./models/epoch_64_lr_10_solo/ground_truth_2/', './models/epoch_4_lr_8_solo/ground_truth_2/',
+    #          './models/old_model_solo/ground_truth_2/', ]
+    preds = ['./models/epoch_4_lr_8_combined/ground_truth_2/',
+             './models/old_model_solo/ground_truth_2/', ]
+    # preds = ['./models/epoch_64_lr_10_combined/ground_truth_1/']
+    evaluate_multiple(preds, args.gt, args.threshold, args.delete_residual)
+    # evaluation(args.pred, args.gt, args.threshold, args.delete_residual)
